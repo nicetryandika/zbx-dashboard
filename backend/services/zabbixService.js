@@ -69,18 +69,24 @@ async function getItems(token, hostId) {
 
 /**
  * Ambil item spesifik router (Ping, Loss, Latency, Uptime, Traffic)
+ * on this need to change
  */
 async function getRouterMetrics(token, hostId) {
   const items = await getItems(token, hostId)
 
-  return {
-    ping: items.find(i => i.key_ === "icmpping"),
-    loss: items.find(i => i.key_ === "icmppingloss"),
-    latency: items.find(i => i.key_ === "icmppingsec"),
-    uptime: items.find(i => i.key_ === "system.uptime"),
-    trafficIn: items.find(i => i.key_.startsWith("net.if.in")),
-    trafficOut: items.find(i => i.key_.startsWith("net.if.out"))
-  }
+  const metrics = [
+    { key: "icmpping", name: "ping" },
+    { key: "icmppingloss", name: "loss" },
+    { key: "icmppingsec", name: "latency" },
+    { key: "uptime", name: "uptime" },
+    { key: "net.if.in", name: "trafficIn" },
+    { key: "net.if.out", name: "trafficOut" }
+  ];
+
+  return metrics.reduce((acc, { key, name }) => {
+    acc[name] = items.find(i => i.key_.includes(key));
+    return acc;
+  }, {});
 }
 
 /**
@@ -89,7 +95,7 @@ async function getRouterMetrics(token, hostId) {
  * @param {string} itemId
  * @param {number} history → 0 = numeric float, 1 = string, 3 = unsigned int
  */
-async function getHistory(token, itemId, history = 3) {
+async function getHistory(token, itemId, history = null) {
   const response = await axios.post(ZABBIX_URL, {
     jsonrpc: "2.0",
     method: "history.get",
@@ -114,7 +120,9 @@ async function getHistory(token, itemId, history = 3) {
 }
 
 async function postHistory(token, itemId, history = "" ) {
-    const response = await axios.post( ZABBIX_URL, {}
+    const response = await axios.post( ZABBIX_URL, {
+        
+    }
 
     )
 }

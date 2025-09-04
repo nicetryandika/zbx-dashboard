@@ -4,6 +4,7 @@ const zabbixService = require('../services/zabbixService')
 
 // LOGIN
 router.post('/login', async (req, res) => {
+    console.log(req.body, '=====');
   try {
     const { username, password } = req.body
     const token = await zabbixService.login(username, password)
@@ -29,21 +30,23 @@ router.post('/hosts', async (req, res) => {
 // GET ROUTER DATA (Ping, Loss, Latency, Traffic, Uptime)
 router.post('/router-data', async (req, res) => {
   try {
-    const { token, hostId } = req.body
-    const items = await zabbixService.getRouterMetrics(token, hostId)
+    const { token, hostId } = req.body;
+    const items = await zabbixService.getRouterMetrics(token, hostId);
 
-    const data = {}
-    for (let [key, item] of Object.entries(items)) {
-      if (item) {
-        data[key] = await zabbixService.getHistory(token, item.itemid, 3)
-      }
-    }
+    const data = await Promise.all(
+      Object.entries(items).map(async ([key, item]) => {
+        if (!item) return [key, null];
+        const history0 = await zabbixService.getHistory(token, item.itemid, 0);
+        const history3 = await zabbixService.getHistory(token, item.itemid, 3);
+        return [key, [...history0, ...history3]]; // merge arrays
+      })
+    );
 
-    res.json(data)
+    res.json(Object.fromEntries(data));
   } catch (err) {
-    console.error("Get router data error:", err.response?.data || err.message)
-    res.status(500).json({ error: err.message })
+    console.error("Get router data error:", err.response?.data || err.message);
+    res.status(500).json({ error: err.message });
   }
-})
+});
 
 module.exports = router

@@ -67,33 +67,63 @@ async function getItems(token, hostId) {
   return response.data.result
 }
 
+// Mapping hostId ke index interface (disesuaikan router kamu)
+const interfaceIndexMap = {
+  "10771": 8, // MBJR
+  "10772": 3, // BBNM
+  "10773": 2, // DPJE == lan to mbjr
+  "10774": 1, // SBJE == lan to dpkeje
+  "10775": 5  // PHYE
+};
+
 /**
- * Ambil item spesifik router (Ping, Loss, Latency, Uptime, Traffic)
- * on this need to change
+ * Ambil metric dasar (Ping, Loss, Latency, Uptime)
  */
-async function getRouterMetrics(token, hostId) {
-  const items = await getItems(token, hostId)
+async function getRouterDataBasic(token, hostId) {
+  const items = await getItems(token, hostId);
 
   const metrics = [
-    { key: "icmpping", name: "ping" },
-    { key: "icmppingloss", name: "loss" },
-    { key: "icmppingsec", name: "latency" },
-    { key: "uptime", name: "uptime" },
-    { key: "net.if.in", name: "trafficIn" },
-    { key: "net.if.out", name: "trafficOut" }
+    { key: "icmpping", name: "ping", history: 0 },
+    { key: "icmppingloss", name: "loss", history: 0 },
+    { key: "icmppingsec", name: "latency", history: 0 },
+    { key: "uptime", name: "uptime", history: 3 }
   ];
 
-  return metrics.reduce((acc, { key, name }) => {
-    acc[name] = items.find(i => i.key_.includes(key));
+  return metrics.reduce((acc, { key, name, history }) => {
+    // pakai includes biar lebih fleksibel
+    const item = items.find(i => i.key_.includes(key));
+    acc[name] = item ? { ...item, history } : null;
+    return acc;
+  }, {});
+}
+
+/**
+ * Ambil metric traffic (In/Out)
+ */
+async function getRouterDataTraffic(token, hostId) {
+  const items = await getItems(token, hostId);
+  const ifaceIndex = interfaceIndexMap[String(hostId)];
+
+  if (!ifaceIndex) {
+    console.warn(`⚠️ Tidak ada mapping interface index untuk hostId ${hostId}`);
+    return {};
+  }
+
+  const metrics = [
+    { key: `net.if.in[ifHCInOctets.${ifaceIndex}]`, name: "trafficIn", history: 3 },
+    { key: `net.if.out[ifHCOutOctets.${ifaceIndex}]`, name: "trafficOut", history: 3 }
+  ];
+
+  return metrics.reduce((acc, { key, name, history }) => {
+    // pakai includes biar tetap ketemu walau key ada variasi
+    const item = items.find(i => i.key_.includes(key));
+    acc[name] = item ? { ...item, history } : null;
     return acc;
   }, {});
 }
 
 /**
  * Ambil history item
- * @param {string} token
- * @param {string} itemId
- * @param {number} history → 0 = numeric float, 1 = string, 3 = unsigned int
  */
 async function getHistory(token, itemId, history = null) {
   const response = await axios.post(ZABBIX_URL, {
@@ -119,18 +149,11 @@ async function getHistory(token, itemId, history = null) {
   return response.data.result
 }
 
-async function postHistory(token, itemId, history = "" ) {
-    const response = await axios.post( ZABBIX_URL, {
-        
-    }
-
-    )
-}
-
 module.exports = { 
   login, 
   getHosts, 
   getItems, 
-  getRouterMetrics, 
-  getHistory 
+  getHistory,
+  getRouterDataBasic,
+  getRouterDataTraffic
 }

@@ -4,7 +4,6 @@ const zabbixService = require('../services/zabbixService')
 
 // LOGIN
 router.post('/login', async (req, res) => {
-    console.log(req.body, '=====');
   try {
     const { username, password } = req.body
     const token = await zabbixService.login(username, password)
@@ -15,7 +14,7 @@ router.post('/login', async (req, res) => {
   }
 })
 
-// GET HOSTS (filter router MBJR, BBNM, DPJE, SBJE, PHYE)
+// GET HOSTS
 router.post('/hosts', async (req, res) => {
   try {
     const { token } = req.body
@@ -27,24 +26,44 @@ router.post('/hosts', async (req, res) => {
   }
 })
 
-// GET ROUTER DATA (Ping, Loss, Latency, Traffic, Uptime)
-router.post('/router-data', async (req, res) => {
+// GET ROUTER DATA BASIC (Ping, Loss, Latency, Uptime)
+router.post('/router-data-basic', async (req, res) => {
   try {
     const { token, hostId } = req.body;
-    const items = await zabbixService.getRouterMetrics(token, hostId);
+    const items = await zabbixService.getRouterDataBasic(token, hostId);
 
     const data = await Promise.all(
       Object.entries(items).map(async ([key, item]) => {
-        if (!item) return [key, null];
-        const history0 = await zabbixService.getHistory(token, item.itemid, 0);
-        const history3 = await zabbixService.getHistory(token, item.itemid, 3);
-        return [key, [...history0, ...history3]]; // merge arrays
+        if (!item) return [key, []];
+        const historyData = await zabbixService.getHistory(token, item.itemid, item.history);
+        return [key, historyData];
       })
     );
 
     res.json(Object.fromEntries(data));
   } catch (err) {
-    console.error("Get router data error:", err.response?.data || err.message);
+    console.error("Get router basic data error:", err.response?.data || err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET ROUTER DATA TRAFFIC (Traffic In/Out)
+router.post('/router-data-traffic', async (req, res) => {
+  try {
+    const { token, hostId } = req.body;
+    const items = await zabbixService.getRouterDataTraffic(token, hostId);
+
+    const data = await Promise.all(
+      Object.entries(items).map(async ([key, item]) => {
+        if (!item) return [key, []];
+        const historyData = await zabbixService.getHistory(token, item.itemid, item.history);
+        return [key, historyData];
+      })
+    );
+
+    res.json(Object.fromEntries(data));
+  } catch (err) {
+    console.error("Get router traffic data error:", err.response?.data || err.message);
     res.status(500).json({ error: err.message });
   }
 });

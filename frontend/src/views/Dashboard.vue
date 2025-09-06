@@ -80,7 +80,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from "vue";
+import { onMounted, ref, nextTick } from "vue";
 import axios from "axios";
 import Chart from "chart.js/auto";
 
@@ -117,6 +117,9 @@ const loadBasicData = async (hostId) => {
     metrics.value = res.data;
     showBasicChart.value = true;
     showTrafficChart.value = false;
+    
+    // Wait for Vue to update the DOM before creating the chart
+    await nextTick();
     createBasicChart(metrics.value);
   } catch (err) {
     alert("Failed to get basic router data: " + err.message);
@@ -132,6 +135,9 @@ const loadTrafficData = async (hostId) => {
     metrics.value = res.data;
     showBasicChart.value = false;
     showTrafficChart.value = true;
+    
+    // Wait for Vue to update the DOM before creating the chart
+    await nextTick();
     createTrafficChart(metrics.value);
   } catch (err) {
     alert("Failed to get traffic router data: " + err.message);

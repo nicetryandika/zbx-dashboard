@@ -84,7 +84,24 @@ async function getRouterDataBasic(token, hostId) {
 
   const metrics = [
     { key: "icmpping", name: "ping", history: 0 },
-    { key: "icmppingloss", name: "loss", history: 0 },
+    { key: "icmppingloss", name: "loss", history: 0 }
+  ];
+
+  return metrics.reduce((acc, { key, name, history }) => {
+    // pakai includes biar lebih fleksibel
+    const item = items.find(i => i.key_.includes(key));
+    acc[name] = item ? { ...item, history } : null;
+    return acc;
+  }, {});
+}
+
+/**
+ * Ambil metric dasar (Ping, Loss, Latency, Uptime)
+ */
+async function getRouterDataLatency(token, hostId) {
+  const items = await getItems(token, hostId);
+
+  const metrics = [
     { key: "icmppingsec", name: "latency", history: 0 },
     { key: "uptime", name: "uptime", history: 3 }
   ];
@@ -155,5 +172,6 @@ module.exports = {
   getItems, 
   getHistory,
   getRouterDataBasic,
-  getRouterDataTraffic
+  getRouterDataTraffic,
+  getRouterDataLatency
 }

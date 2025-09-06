@@ -34,12 +34,21 @@
             <h3 style="font-size: 18px; font-weight: bold; color: #333; margin-bottom: 15px;">
               {{ host.name }}
             </h3>
+
             <button
               @click="loadBasicData(host.hostid)"
               style="padding: 8px 16px; margin: 5px; border: none; border-radius: 5px; font-size: 14px; font-weight: bold; cursor: pointer; text-transform: uppercase; background-color: #28a745; color: white;"
             >
-              Tampilkan MRTG
+              Tampilkan PACKETLOSS
             </button>
+
+            <button
+              @click="loadLatencyData(host.hostid)"
+              style="padding: 8px 16px; margin: 5px; border: none; border-radius: 5px; font-size: 14px; font-weight: bold; cursor: pointer; text-transform: uppercase; background-color: #ff9900; color: white;"
+            >
+              Tampilkan Latency
+            </button>
+
             <button
               @click="loadTrafficData(host.hostid)"
               style="padding: 8px 16px; margin: 5px; border: none; border-radius: 5px; font-size: 14px; font-weight: bold; cursor: pointer; text-transform: uppercase; background-color: #0066cc; color: white;"
@@ -50,16 +59,29 @@
         </div>
       </section>
 
-      <!-- Chart Basic -->
+      <!-- Chart Data Basic -->
       <section
         v-if="showBasicChart"
         style="background-color: white; padding: 20px; border: 1px solid #ddd; border-radius: 5px;"
       >
         <h3 style="font-size: 24px; font-weight: bold; color: #333; margin-bottom: 20px; text-align: center; border-bottom: 3px solid #0066cc; padding-bottom: 10px;">
-           Router MRTG
+          Router Packet Loss
         </h3>
         <div>
           <canvas id="routerDataChart"></canvas>
+        </div>
+      </section>
+
+      <!-- Chart Data Latency -->
+      <section
+        v-if="showLatencyChart"
+        style="background-color: white; padding: 20px; border: 1px solid #ddd; border-radius: 5px;"
+      >
+        <h3 style="font-size: 24px; font-weight: bold; color: #333; margin-bottom: 20px; text-align: center; border-bottom: 3px solid #0066cc; padding-bottom: 10px;">
+          Router Latency
+        </h3>
+        <div>
+          <canvas id="routerDataLatencyChart"></canvas>
         </div>
       </section>
 
@@ -86,23 +108,25 @@ import Chart from "chart.js/auto";
 
 const token = ref(localStorage.getItem("zabbixToken"));
 const metrics = ref(null);
-const hosts = ref(null);
+const hosts = ref([]);
 
 const showBasicChart = ref(false);
 const showTrafficChart = ref(false);
+const showLatencyChart = ref(false); // ✅ konsisten
 
-// UPDATE: fungsi konversi
-const bytesToMbps = (value) => (parseFloat(value) * 8) / (1000 * 1000);
+// util konversi bytes → Mbps
+const bytesToMbps = (value) => (parseFloat(value || 0) * 8) / (1000 * 1000);
 
-let currentChart = null;
-let currentTrafficChart = null;
+let currentChart = null;         // dipakai untuk MRTG & Latency
+let currentTrafficChart = null;  // khusus traffic
 
+// Ambil daftar host saat mount
 onMounted(async () => {
   try {
     const res = await axios.post("http://localhost:5000/api/zabbix/hosts", {
       token: token.value,
     });
-    hosts.value = res.data;
+    hosts.value = res.data || [];
   } catch (err) {
     alert("Failed to get router data: " + err.message);
   }
@@ -112,13 +136,14 @@ const loadBasicData = async (hostId) => {
   try {
     const res = await axios.post("http://localhost:5000/api/zabbix/router-data-basic", {
       token: token.value,
-      hostId
+      hostId,
     });
     metrics.value = res.data;
+
     showBasicChart.value = true;
+    showLatencyChart.value = false;
     showTrafficChart.value = false;
-    
-    // Wait for Vue to update the DOM before creating the chart
+
     await nextTick();
     createBasicChart(metrics.value);
   } catch (err) {
@@ -126,17 +151,37 @@ const loadBasicData = async (hostId) => {
   }
 };
 
+const loadLatencyData = async (hostId) => {
+  try {
+    const res = await axios.post("http://localhost:5000/api/zabbix/router-data-latency", {
+      token: token.value,
+      hostId,
+    });
+    metrics.value = res.data;
+
+    showBasicChart.value = false;
+    showLatencyChart.value = true;
+    showTrafficChart.value = false;
+
+    await nextTick();
+    createLatencyChart(metrics.value);
+  } catch (err) {
+    alert("Failed to get latency router data: " + err.message);
+  }
+};
+
 const loadTrafficData = async (hostId) => {
   try {
     const res = await axios.post("http://localhost:5000/api/zabbix/router-data-traffic", {
       token: token.value,
-      hostId
+      hostId,
     });
     metrics.value = res.data;
+
     showBasicChart.value = false;
+    showLatencyChart.value = false;
     showTrafficChart.value = true;
-    
-    // Wait for Vue to update the DOM before creating the chart
+
     await nextTick();
     createTrafficChart(metrics.value);
   } catch (err) {
@@ -144,46 +189,43 @@ const loadTrafficData = async (hostId) => {
   }
 };
 
+/* =========================
+   Chart Builders
+   ========================= */
+
 const createBasicChart = (metricsData) => {
-  const routerDataChartElement = document.getElementById("routerDataChart");
-  const ctx = routerDataChartElement?.getContext("2d");
+  const el = document.getElementById("routerDataChart");
+  const ctx = el?.getContext("2d");
 
   if (currentChart) {
     currentChart.destroy();
     currentChart = null;
   }
-
-  if (!metricsData) return;
+  if (!metricsData || !ctx) return;
 
   currentChart = new Chart(ctx, {
     type: "line",
     data: {
-      labels: metricsData.ping
-        ? metricsData.ping.map((item) => new Date(item.clock * 1000).toLocaleString())
-        : [],
+      labels: (metricsData.ping || []).map((i) =>
+        new Date(i.clock * 1000).toLocaleString()
+      ),
       datasets: [
         {
           label: "Ping",
-          data: metricsData.ping ? metricsData.ping.map((item) => parseFloat(item.value)) : [],
+          data: (metricsData.ping || []).map((i) => parseFloat(i.value)),
           borderColor: "#0066cc",
           backgroundColor: "rgba(0, 102, 204, 0.2)",
           fill: true,
         },
         {
           label: "Packet Loss",
-          data: metricsData.loss ? metricsData.loss.map((item) => parseFloat(item.value)) : [],
+          data: (metricsData.loss || []).map((i) => parseFloat(i.value)),
           borderColor: "#ff6347",
           backgroundColor: "rgba(255, 99, 71, 0.2)",
           fill: true,
         },
-        {
-          label: "Latency",
-          data: metricsData.latency ? metricsData.latency.map((item) => parseFloat(item.value)) : [],
-          borderColor: "#32cd32",
-          backgroundColor: "rgba(50, 205, 50, 0.2)",
-          fill: true,
-        },
-      ],
+        
+      ]
     },
     options: {
       responsive: true,
@@ -196,50 +238,83 @@ const createBasicChart = (metricsData) => {
   });
 };
 
+const createLatencyChart = (metricsData) => {
+  const el = document.getElementById("routerDataLatencyChart");
+  const ctx = el?.getContext("2d");
+
+  if (currentChart) {
+    currentChart.destroy();
+    currentChart = null;
+  }
+  if (!metricsData || !ctx) return;
+
+  const lat = metricsData.latency || [];
+  currentChart = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: lat.map((i) => new Date(i.clock * 1000).toLocaleString()),
+      datasets: [
+        {
+          label: "Latency (ms)",
+          data: lat.map((i) => parseFloat(i.value)),
+          borderColor: "#32cd32",
+          backgroundColor: "rgba(50, 205, 50, 0.2)",
+          fill: true,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      scales: {
+        x: { type: "category", title: { display: true, text: "Time" } },
+        y: { beginAtZero: true, title: { display: true, text: "ms" } },
+      },
+      plugins: { legend: { display: true, position: "top" } },
+    },
+  });
+};
+
 const createTrafficChart = (metricsData) => {
-  const routerTrafficDataChartElement = document.getElementById("routerTrafficDataChart");
-  const trafficCtx = routerTrafficDataChartElement?.getContext("2d");
+  const el = document.getElementById("routerTrafficDataChart");
+  const ctx = el?.getContext("2d");
 
   if (currentTrafficChart) {
     currentTrafficChart.destroy();
     currentTrafficChart = null;
   }
+  if (!metricsData || !ctx) return;
 
-  if (!metricsData) return;
-
- // Traffic Chart
-currentTrafficChart = new Chart(trafficCtx, {
-  type: "line",
-  data: {
-    labels: metricsData.trafficIn.map((item) =>
-      new Date(item.clock * 1000).toLocaleString()
-    ),
-    datasets: [
-      {
-        label: "Download (Mbps)", // UPDATE
-        data: metricsData.trafficIn.map((item) => bytesToMbps(item.value)), // UPDATE
-        borderColor: "#ff8c00",
-        backgroundColor: "rgba(255, 140, 0, 0.2)",
-        fill: true,
-      },
-      {
-        label: "Upload (Mbps)", // UPDATE
-        data: metricsData.trafficOut.map((item) => bytesToMbps(item.value)), // UPDATE
-        borderColor: "#9932cc",
-        backgroundColor: "rgba(153, 50, 204, 0.2)",
-        fill: true,
-      },
-    ],
-  },
-  options: {
-    responsive: true,
-    scales: {
-      x: { type: "category", title: { display: true, text: "Time" } },
-      y: { beginAtZero: true, title: { display: true, text: "Mbps" } }, // UPDATE
+  currentTrafficChart = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: (metricsData.trafficIn || []).map((i) =>
+        new Date(i.clock * 1000).toLocaleString()
+      ),
+      datasets: [
+        {
+          label: "Download (Mbps)",
+          data: (metricsData.trafficIn || []).map((i) => bytesToMbps(i.value)),
+          borderColor: "#ff8c00",
+          backgroundColor: "rgba(255, 140, 0, 0.2)",
+          fill: true,
+        },
+        {
+          label: "Upload (Mbps)",
+          data: (metricsData.trafficOut || []).map((i) => bytesToMbps(i.value)),
+          borderColor: "#9932cc",
+          backgroundColor: "rgba(153, 50, 204, 0.2)",
+          fill: true,
+        },
+      ],
     },
-    plugins: { legend: { display: true, position: "top" } },
-  },
-});
-
+    options: {
+      responsive: true,
+      scales: {
+        x: { type: "category", title: { display: true, text: "Time" } },
+        y: { beginAtZero: true, title: { display: true, text: "Mbps" } },
+      },
+      plugins: { legend: { display: true, position: "top" } },
+    },
+  });
 };
 </script>

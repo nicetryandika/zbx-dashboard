@@ -26,7 +26,7 @@ router.post('/hosts', async (req, res) => {
   }
 })
 
-// GET ROUTER DATA BASIC (Ping, Loss, Latency, Uptime)
+// GET ROUTER DATA BASIC (Ping dan Loss)
 router.post('/router-data-basic', async (req, res) => {
   try {
     const { token, hostId } = req.body;
@@ -43,6 +43,27 @@ router.post('/router-data-basic', async (req, res) => {
     res.json(Object.fromEntries(data));
   } catch (err) {
     console.error("Get router basic data error:", err.response?.data || err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET ROUTER DATA LATENCY ( Latency )
+router.post('/router-data-latency', async (req, res) => {
+  try {
+    const { token, hostId } = req.body;
+    const items = await zabbixService.getRouterDataLatency(token, hostId);
+
+    const data = await Promise.all(
+      Object.entries(items).map(async ([key, item]) => {
+        if (!item) return [key, []];
+        const historyData = await zabbixService.getHistory(token, item.itemid, item.history);
+        return [key, historyData];
+      })
+    );
+
+    res.json(Object.fromEntries(data));
+  } catch (err) {
+    console.error("Get router latency data error:", err.response?.data || err.message);
     res.status(500).json({ error: err.message });
   }
 });
